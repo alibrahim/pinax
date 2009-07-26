@@ -1,6 +1,7 @@
 {% load i18n %}
 {% load avatar_tags %}
 {% load tagging_tags %}
+{% load group_tags %}
 
 <div class="photo-right-profile clearfix">
     <div class="photo-avatar">{% avatar photo.member.username 50 %}</div>
@@ -35,12 +36,12 @@
     {% endif %}
     
     {% if is_me %}
-        <form action="{% url photo_destroy photo.id %}" method="POST">
+        <form action="{% groupurl photo_destroy group id=photo.id %}" method="POST">
             <label>Delete Photo</label> <input type="image" src="{{ MEDIA_URL }}pinax/images/silk/icons/delete.png" border="0" title="{% trans "Delete Photo" %}" />
                         <input type="hidden" name="action" value="delete"/>
         </form>
 
-        <a href="{% url photo_edit photo.id %}">Edit Photo</a>
+        <a href="{% groupurl photo_edit group id=photo.id %}">Edit Photo</a>
 
     {% endif %}
 
@@ -49,44 +50,3 @@
 <div class="photo-right-exif">
 
 </div>
-{% if is_me %}
-<div class="photo-right-profile ">
-    {% if tribes %}
-        <h2>Add photo to tribe</h2>
-        {% for tribe in tribes %}
-            <form action="{{ photo.get_absolute_url }}" method="POST">
-                <input type="hidden" name="tribe" value="{{ tribe.id }}"/>
-            {% if tribe.has_photo %}
-                <input type="hidden" name="action" value="removefromtribe"/>
-                <input type="submit" value="remove"/>
-                {{ tribe.name }}
-            {% else %}
-                <input type="hidden" name="action" value="addtotribe"/>
-                <input type="submit" value="add"/>
-                {{ tribe.name }}
-            {% endif %}
-            </form>
-        {% endfor %}
-    {% endif %}
-
-    {% if projects %}
-        <h2>Add photo to project</h2>
-        {% for project in projects %}
-            <form action="{{ photo.get_absolute_url }}" method="POST">
-                <input type="hidden" name="project" value="{{ project.id }}"/>
-            {% if project.has_photo %}
-                <input type="hidden" name="action" value="removefromproject"/>
-                <input type="submit" value="remove"/>
-                {{ project.name }}
-            {% else %}
-                <input type="hidden" name="action" value="addtoproject"/>
-                <input type="submit" value="add"/>
-                {{ project.name }}
-            {% endif %}
-            </form>
-        {% endfor %}
-    {% endif %}
-
-
-</div>
-{% endif %}

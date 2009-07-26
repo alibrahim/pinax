@@ -1,15 +1,15 @@
 {% extends "tribes/base.html" %}
 
-{% load microblogging_tags %}
 {% load i18n %}
 {% load uni_form %}
-{% load wiki %}
-{% load wikiurl %}
+{% load wiki_tags %}
 {% load avatar_tags %}
 {% load threadedcommentstags %}
 {% load pagination_tags %}
 {% load extra_tagging_tags %}
-{% load tribe_tags %}
+{% load tribes_tags %}
+{% load group_tags %}
+{% load topics_tags %}
 
 {% block head_title %}{{ tribe.name }}{% endblock %}
 
@@ -77,7 +77,7 @@
         {% if user.is_authenticated %}
             <div>
                 <form method="POST" action="">
-                    {% if are_member %}
+                    {% if is_member %}
                         {% ifequal user tribe.creator %}
                             <p>{% trans "You are the creator of this tribe so can't leave (yet)." %}</p>
                         {% else %}
@@ -100,18 +100,21 @@
         {% if user.is_authenticated %}
             <h2>{% trans "Discussion Topics" %}{% if tribe.topics.all.count %} ({{ tribe.topics.all.count }}){% endif %}</h2>
             
-            {% if topics %}
-                {% for topic in topics %}
-                    {% show_tribe_topic topic %}
-                {% endfor %}
-                <p><a href="{% url tribe_topics tribe.slug %}">{% trans "more..." %}</a></p>
-            {% else %}
-                {% url tribe_topics tribe.slug as new_tribe_url %}
-                <p>{% blocktrans %}None yet. <a href="{{ new_tribe_url }}">Start one...</a>{% endblocktrans %}</p>
-            {% endif %}
+            {% get_topics_for_group tribe as topic_queryset %}
+            {% with topic_queryset|slice:":5" as topics %}
+                {% if topics %}
+                    {% for topic in topics|slice:":5" %}
+                        {% show_topic topic %}
+                    {% endfor %}
+                    <p><a href="{% groupurl topic_list tribe %}">{% trans "more..." %}</a></p>
+                {% else %}
+                    {% groupurl topic_list tribe as new_topic_url %}
+                    <p>{% blocktrans %}None yet. <a href="{{ new_topic_url }}">Start one...</a>{% endblocktrans %}</p>
+                {% endif %}
+            {% endwith %}
             
-            
-            <h2>{% trans "Wiki Articles" %}{% if total_articles %} ({{ total_articles }}){% endif %}</h2>
+            {% content_objects tribe "wiki.Article" as articles %}
+            <h2>{% trans "Wiki Articles" %}{% if articles %} ({{ articles|length }}){% endif %}</h2>
             
             {% if articles %}
                 <table class="topics">
@@ -119,9 +122,9 @@
                         {% show_teaser article %}
                     {% endfor %}
                 </table>
-                <p><a href="{% wikiurl list tribe %}">{% trans "more..." %}</a></p>
+                <p><a href="{% groupurl wiki_list tribe %}">{% trans "more..." %}</a></p>
             {% else %}
-                {% wikiurl list tribe as wiki_url %}
+                {% groupurl wiki_list tribe as wiki_url %}
                 <p>
                     {% blocktrans %}
                         None yet. Go to the <a href="{{ wiki_url }}" title="wiki">wiki</a> to start a new article.
@@ -129,23 +132,53 @@
                 </p>
             {% endif %}
             
+            {# the queryset returned here can be expensive since there is no select_related for photo join #}
+            {% content_objects tribe "photos.Pool" as photos %}
             
-            <h2>{% trans "Tweets" %}</h2>
-            
-            {% tweet_listing tweets 1 0 %}            
+            <h2>{% trans "Tribe Photo Pool" %}</h2>
             
             {% if photos %}
-                <h2>{% trans "Tribe Photo Pool" %}</h2>
                 <div class="thumb-row clearfix">
                     {% for photo in photos %}
                     <div class="gallery-photo-thumb">
-                        <a href="/photos/details/{{ photo.photo.id }}/"><img src="{{ photo.photo.get_thumbnail_url }}" alt="{{ photo.photo.title }}"/></a><br />
+                        <a href="{% groupurl photo_details tribe id=photo.photo.id %}"><img src="{{ photo.photo.get_thumbnail_url }}" alt="{{ photo.photo.title }}"/></a><br />
                         <img src="{{ MEDIA_URL }}pinax/images/silk/icons/comment.png" border="0" class="noborder" align="absmiddle" /><a href="/photos/details/{{ photo.photo.id }}/">{% get_comment_count for photo as commentcount %} {% blocktrans %}{{ commentcount }} Comments {% endblocktrans %}</a>
                    </div>
                    {% endfor %}
                </div>
+            {% else %}
+                <p>
+                    {% groupurl photo_upload tribe as photo_upload_url %}
+                    {% blocktrans %}
+                        There are no photos associated to this tribe. You can <a href="{{ photo_upload_url }}">add a photo</a>.</a>
+                    {% endblocktrans %}
+                </p>
             {% endif %}
             
+            
+{% comment %}
+            <h2>{% trans "Tweets" %}</h2>
+            
+            {% tweet_listing tweets 1 0 %}
+            
+            <h2>{% trans "Upcoming Events" %}</h2>
+            {% get_calendar tribe as calendar %}
+            {% if calendar.get_upcoming_events %}
+                <table class="topics">
+                    {% for event in calendar.get_upcoming_events %}
+                        <tr class="odd">
+                            <td>{{ event.title }}</td>
+                            <td>{{ event.start }}-{{ event.end }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                {% trans "There are no upcoming events." %}
+            {% endif %}
+            <p>
+                <a href="{{ calendar.get_absolute_url }}">{% trans "calendar..." %}</a>
+            </p>
+{% endcomment %} 
             
         {% endif %}
     </div>

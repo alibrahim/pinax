@@ -68,7 +68,6 @@ SECRET_KEY = 'bk-e2zv3humar79nm=j*bwc=-ymeit(8a20whp3goq4dh71t)s'
 TEMPLATE_LOADERS = (
     'django.template.loaders.filesystem.load_template_source',
     'django.template.loaders.app_directories.load_template_source',
-    'dbtemplates.loader.load_template_source',
 )
 
 MIDDLEWARE_CLASSES = (
@@ -80,8 +79,8 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.doc.XViewMiddleware',
     'pagination.middleware.PaginationMiddleware',
     'django_sorting.middleware.SortingMiddleware',
-    'misc.middleware.SortOrderMiddleware',
     'djangodblog.middleware.DBLogMiddleware',
+    'pinax.middleware.security.HideSensistiveFieldsMiddleware',
     'django.middleware.transaction.TransactionMiddleware',
 )
 
@@ -99,15 +98,16 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "django.core.context_processors.media",
     "django.core.context_processors.request",
 
+    "pinax.core.context_processors.contact_email",
+    "pinax.core.context_processors.site_name",
+
     "notification.context_processors.notification",
     "announcements.context_processors.site_wide_announcements",
     "account.context_processors.openid",
     "account.context_processors.account",
-    "misc.context_processors.contact_email",
-    "misc.context_processors.site_name",
     "messages.context_processors.inbox",
     "friends_app.context_processors.invitations",
-    "misc.context_processors.combined_inbox_count",
+    "social_project.context_processors.combined_inbox_count",
 )
 
 COMBINED_INBOX_COUNT_SOURCES = (
@@ -124,6 +124,7 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.humanize',
     'django.contrib.markup',
+    'pinax.templatetags',
     
     # external
     'notification', # must be first
@@ -131,7 +132,6 @@ INSTALLED_APPS = (
     'emailconfirmation',
     'django_extensions',
     'robots',
-    'dbtemplates',
     'friends',
     'mailer',
     'messages',
@@ -141,11 +141,13 @@ INSTALLED_APPS = (
     'pagination',
 #    'gravatar',
     'threadedcomments',
+    'threadedcomments_extras',
     'wiki',
     'swaps',
     'timezones',
     'app_plugins',
     'voting',
+    'voting_extras',
     'tagging',
     'bookmarks',
     'blog',
@@ -157,15 +159,15 @@ INSTALLED_APPS = (
     'locations',
     'uni_form',
     'django_sorting',
+    'django_markup',
     
     # internal (for now)
     'analytics',
     'profiles',
     'staticfiles',
     'account',
-    'newtribes',
-    'newprojects',
-    'misc',
+    'signup_codes',
+    'tribes',
     'photos',
     'tag_app',
     'topics',
@@ -179,14 +181,27 @@ ABSOLUTE_URL_OVERRIDES = {
     "auth.user": lambda o: "/profiles/%s/" % o.username,
 }
 
+MARKUP_FILTER_FALLBACK = 'none'
+MARKUP_CHOICES = (
+    ('restructuredtext', u'reStructuredText'),
+    ('textile', u'Textile'),
+    ('markdown', u'Markdown'),
+    ('creole', u'Creole'),
+)
+WIKI_MARKUP_CHOICES = MARKUP_CHOICES
+
 AUTH_PROFILE_MODULE = 'profiles.Profile'
 NOTIFICATION_LANGUAGE_MODULE = 'account.Account'
+
+ACCOUNT_OPEN_SIGNUP = True
+ACCOUNT_REQUIRED_EMAIL = False
+ACCOUNT_EMAIL_VERIFICATION = False
 
 EMAIL_CONFIRMATION_DAYS = 2
 EMAIL_DEBUG = DEBUG
 CONTACT_EMAIL = "feedback@example.com"
 SITE_NAME = "Pinax"
-LOGIN_URL = "/account/login"
+LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URLNAME = "what_next"
 
 INTERNAL_IPS = (
@@ -195,32 +210,32 @@ INTERNAL_IPS = (
 
 ugettext = lambda s: s
 LANGUAGES = (
-  ('en', u'English'),
-  ('de', u'Deutsch'),
-  ('es', u'Español'),
-  ('fr', u'Français'),
-  ('sv', u'Svenska'),
-  ('pt-br', u'Português brasileiro'),
-  ('he', u'עברית'),
-  ('ar', u'العربية'),
-  ('it', u'Italiano'),
+    ('en', u'English'),
+    ('de', u'Deutsch'),
+    ('es', u'Español'),
+    ('fr', u'Français'),
+    ('sv', u'Svenska'),
+    ('pt-br', u'Português brasileiro'),
+    ('he', u'עברית'),
+    ('ar', u'العربية'),
+    ('it', u'Italiano'),
 )
 
 # URCHIN_ID = "ua-..."
 
-CACHE_BACKEND = "locmem:///?max_entries=3000"
-
 class NullStream(object):
-    def write(*args, **kw):
+    def write(*args, **kwargs):
         pass
     writeline = write
     writelines = write
 
-RESTRUCTUREDTEXT_FILTER_SETTINGS = { 'cloak_email_addresses': True,
-                                     'file_insertion_enabled': False,
-                                     'raw_enabled': False,
-                                     'warning_stream': NullStream(),
-                                     'strip_comments': True,}
+RESTRUCTUREDTEXT_FILTER_SETTINGS = {
+    'cloak_email_addresses': True,
+    'file_insertion_enabled': False,
+    'raw_enabled': False,
+    'warning_stream': NullStream(),
+    'strip_comments': True,
+}
 
 # if Django is running behind a proxy, we need to do things like use
 # HTTP_X_FORWARDED_FOR instead of REMOTE_ADDR. This setting is used
@@ -241,4 +256,3 @@ try:
     from local_settings import *
 except ImportError:
     pass
-

@@ -5,8 +5,6 @@ from django.contrib import admin
 
 from account.openid_consumer import PinaxConsumer
 
-import os.path
-
 from microblogging.feeds import TweetFeedAll, TweetFeedUser, TweetFeedUserWithFriends
 tweets_feed_dict = {"feed_dict": {
     'all': TweetFeedAll,
@@ -23,10 +21,21 @@ blogs_feed_dict = {"feed_dict": {
 from bookmarks.feeds import BookmarkFeed
 bookmarks_feed_dict = {"feed_dict": { '': BookmarkFeed }}
 
+
 admin.autodiscover()
+
+
+if settings.ACCOUNT_OPEN_SIGNUP:
+    signup_view = "account.views.signup"
+else:
+    signup_view = "signup_codes.views.signup"
+
 
 urlpatterns = patterns('',
     url(r'^$', direct_to_template, {"template": "homepage.html"}, name="home"),
+    
+    url(r'^admin/invite_user/$', 'signup_codes.views.admin_invite_user', name="admin_invite_user"),
+    url(r'^account/signup/$', signup_view, name="acct_signup"),
     
     (r'^about/', include('about.urls')),
     (r'^account/', include('account.urls')),
@@ -41,8 +50,7 @@ urlpatterns = patterns('',
     (r'^messages/', include('messages.urls')),
     (r'^announcements/', include('announcements.urls')),
     (r'^tweets/', include('microblogging.urls')),
-    (r'^tribes/', include('newtribes.urls')),
-    (r'^projects/', include('newprojects.urls')),
+    (r'^tribes/', include('tribes.urls')),
     (r'^comments/', include('threadedcomments.urls')),
     (r'^robots.txt$', include('robots.urls')),
     (r'^i18n/', include('django.conf.urls.i18n')),

@@ -79,12 +79,13 @@ MIDDLEWARE_CLASSES = (
     'account.middleware.AuthenticatedMiddleware',
     'django.middleware.doc.XViewMiddleware',
     'pagination.middleware.PaginationMiddleware',
+    'pinax.middleware.security.HideSensistiveFieldsMiddleware',
 )
 
 ROOT_URLCONF = 'intranet_project.urls'
 
 TEMPLATE_DIRS = (
-    os.path.join(os.path.dirname(__file__), "templates"),
+    os.path.join(PROJECT_ROOT, "templates"),
     os.path.join(PINAX_ROOT, "templates", PINAX_THEME),
 )
 
@@ -95,12 +96,13 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "django.core.context_processors.media",
     "django.core.context_processors.request",
     
+    "pinax.core.context_processors.contact_email",
+    "pinax.core.context_processors.site_name",
+    
     "notification.context_processors.notification",
     "announcements.context_processors.site_wide_announcements",
     "account.context_processors.openid",
     "account.context_processors.account",
-    "misc.context_processors.contact_email",
-    "misc.context_processors.site_name",
 )
 
 INSTALLED_APPS = (
@@ -111,6 +113,7 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.humanize',
     'django.contrib.markup',
+    'pinax.templatetags',
     
     # external
     'notification', # must be first
@@ -127,12 +130,15 @@ INSTALLED_APPS = (
     'threadedcomments',
     'wiki',
     'uni_form',
+    'django_markup',
+    'attachments',
     
     # internal (for now)
     'basic_profiles',
     'account',
     'signup_codes',
-    'misc',
+    'groups',
+    'tagging_utils',
     #'pastebin',
     #'quickbar',
     'tasks',
@@ -148,6 +154,15 @@ ABSOLUTE_URL_OVERRIDES = {
     "auth.user": lambda o: "/profiles/%s/" % o.username,
 }
 
+MARKUP_FILTER_FALLBACK = 'none'
+MARKUP_CHOICES = (
+    ('restructuredtext', u'reStructuredText'),
+    ('textile', u'Textile'),
+    ('markdown', u'Markdown'),
+    ('creole', u'Creole'),
+)
+WIKI_MARKUP_CHOICES = MARKUP_CHOICES
+
 AUTH_PROFILE_MODULE = 'basic_profiles.Profile'
 NOTIFICATION_LANGUAGE_MODULE = 'account.Account'
 
@@ -159,6 +174,8 @@ LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URLNAME = "home"
 
 ACCOUNT_OPEN_SIGNUP = False
+ACCOUNT_REQUIRED_EMAIL = False
+ACCOUNT_EMAIL_VERIFICATION = False
 
 AUTHENTICATED_EXEMPT_URLS = [
     r"^/account/signup/$",

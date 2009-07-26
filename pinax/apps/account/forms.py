@@ -1,4 +1,3 @@
-
 import re
 
 from django import forms
@@ -8,7 +7,7 @@ from django.utils.translation import ugettext_lazy as _, ugettext
 from django.utils.encoding import smart_unicode
 from django.utils.hashcompat import sha_constructor
 
-from misc.utils import get_send_mail
+from pinax.core.utils import get_send_mail
 send_mail = get_send_mail()
 
 from django.contrib.auth import authenticate, login
@@ -63,7 +62,20 @@ class SignupForm(forms.Form):
     username = forms.CharField(label=_("Username"), max_length=30, widget=forms.TextInput())
     password1 = forms.CharField(label=_("Password"), widget=forms.PasswordInput(render_value=False))
     password2 = forms.CharField(label=_("Password (again)"), widget=forms.PasswordInput(render_value=False))
-    email = forms.EmailField(label=_("Email (optional)"), required=False, widget=forms.TextInput())
+    
+    if settings.ACCOUNT_REQUIRED_EMAIL or settings.ACCOUNT_EMAIL_VERIFICATION:
+        email = forms.EmailField(
+            label = _("Email"),
+            required = True,
+            widget = forms.TextInput()
+        )
+    else:
+        email = forms.EmailField(
+            label = _("Email (optional)"),
+            required = False,
+            widget = forms.TextInput()
+        )
+    
     confirmation_key = forms.CharField(max_length=40, required=False, widget=forms.HiddenInput())
 
     def clean_username(self):
@@ -85,6 +97,7 @@ class SignupForm(forms.Form):
         username = self.cleaned_data["username"]
         email = self.cleaned_data["email"]
         password = self.cleaned_data["password1"]
+        
         if self.cleaned_data["confirmation_key"]:
             from friends.models import JoinInvitation # @@@ temporary fix for issue 93
             try:
@@ -110,18 +123,34 @@ class SignupForm(forms.Form):
                 if email:
                     new_user.message_set.create(message=ugettext(u"Confirmation email sent to %(email)s") % {'email': email})
                     EmailAddress.objects.add_email(new_user, email)
-            return username, password # required for authenticate()
         else:
             new_user = User.objects.create_user(username, "", password)
             if email:
                 new_user.message_set.create(message=ugettext(u"Confirmation email sent to %(email)s") % {'email': email})
                 EmailAddress.objects.add_email(new_user, email)
-            return username, password # required for authenticate()
+        
+        if settings.ACCOUNT_EMAIL_VERIFICATION:
+            new_user.is_active = False
+            new_user.save()
+                
+        return username, password # required for authenticate()
 
 
 class OpenIDSignupForm(forms.Form):
     username = forms.CharField(label="Username", max_length=30, widget=forms.TextInput())
-    email = forms.EmailField(label="Email (optional)", required=False, widget=forms.TextInput())
+    
+    if settings.ACCOUNT_REQUIRED_EMAIL or settings.ACCOUNT_EMAIL_VERIFICATION:
+        email = forms.EmailField(
+            label = _("Email"),
+            required = True,
+            widget = forms.TextInput()
+        )
+    else:
+        email = forms.EmailField(
+            label = _("Email (optional)"),
+            required = False,
+            widget = forms.TextInput()
+        )
     
     def __init__(self, *args, **kwargs):
         # @@@ this method needs to be compared to django-openid's form.

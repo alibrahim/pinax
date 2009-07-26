@@ -13,6 +13,8 @@ from django.contrib.contenttypes import generic
 
 from django.contrib.auth.models import User
 
+from pinax.utils.importlib import import_module
+
 from tagging.fields import TagField
 from tagging.models import Tag
 
@@ -21,23 +23,8 @@ if "notification" in settings.INSTALLED_APPS:
 else:
     notification = None
 
-try:
-    MARKUP_CHOICES = settings.WIKI_MARKUP_CHOICES  # reuse this for now; taken from wiki
-except AttributeError:
-    MARKUP_CHOICES = (
-        ('rst', _(u'reStructuredText')),
-        ('txl', _(u'Textile')),
-        ('mrk', _(u'Markdown')),
-    )
+workflow = import_module(getattr(settings, "TASKS_WORKFLOW_MODULE", "tasks.workflow"))
 
-# import task workflow methods
-from tasks.workflow import (is_assignee, is_creator, no_assignee,
-                            is_assignee_or_none, always)
-
-# import workflow states and resolutions
-from tasks.workflow import (STATE_TRANSITIONS, STATE_CHOICES,
-                            RESOLUTION_CHOICES, REVERSE_STATE_CHOICES,
-                            STATE_CHOICES_DICT, RESOLUTION_CHOICES_DICT)
 
 
 class Task(models.Model):
@@ -45,9 +32,9 @@ class Task(models.Model):
     a task to be performed.
     """
     
-    STATE_CHOICES = STATE_CHOICES
-    RESOLUTION_CHOICES = RESOLUTION_CHOICES
-    REVERSE_STATE_CHOICES = REVERSE_STATE_CHOICES
+    STATE_CHOICES = workflow.STATE_CHOICES
+    RESOLUTION_CHOICES = workflow.RESOLUTION_CHOICES
+    REVERSE_STATE_CHOICES = workflow.REVERSE_STATE_CHOICES
     
     content_type = models.ForeignKey(ContentType, null=True, blank=True)
     object_id = models.PositiveIntegerField(null=True, blank=True)
@@ -57,8 +44,8 @@ class Task(models.Model):
     
     summary = models.CharField(_('summary'), max_length=100)
     detail = models.TextField(_('detail'), blank=True)
-    markup = models.CharField(_(u'Detail Markup'), max_length=3,
-        choices=MARKUP_CHOICES, blank=True)
+    markup = models.CharField(_(u'Detail Markup'), max_length=20,
+        choices=settings.MARKUP_CHOICES, blank=True)
     creator = models.ForeignKey(User, related_name="created_tasks", verbose_name=_('creator'))
     created = models.DateTimeField(_('created'), default=datetime.now)
     modified = models.DateTimeField(_('modified'), default=datetime.now) # task modified when commented on or when various fields changed
@@ -68,8 +55,8 @@ class Task(models.Model):
     
     # status is a short message the assignee can give on their current status
     status = models.CharField(_('status'), max_length=100, blank=True)
-    state = models.CharField(_('state'), max_length=1, choices=STATE_CHOICES, default=1)
-    resolution = models.CharField(_('resolution'), max_length=2, choices=RESOLUTION_CHOICES, blank=True)
+    state = models.CharField(_('state'), max_length=1, choices=workflow.STATE_CHOICES, default=1)
+    resolution = models.CharField(_('resolution'), max_length=2, choices=workflow.RESOLUTION_CHOICES, blank=True)
     
     # fields for review and saves
     fields = ('summary', 'detail', 'creator', 'created', 'assignee', 'markup',
@@ -97,6 +84,9 @@ class Task(models.Model):
         # get the task history object
         th = TaskHistory()
         th.task = self
+        
+        if self.group:
+            self.group.associate(th, commit=False)
         
         # save the simple fields
         
@@ -132,7 +122,7 @@ class Task(models.Model):
         # I'm the states already allowed for the users
         existing_states = []
         
-        for transition in STATE_TRANSITIONS:
+        for transition in workflow.STATE_TRANSITIONS:
             
             if self.state != str(transition[0]):
                 # if the current state does not match a first element in the
@@ -186,9 +176,9 @@ def new_comment(sender, instance, **kwargs):
 models.signals.post_save.connect(new_comment, sender=ThreadedComment)
 
 class TaskHistory(models.Model):
-    STATE_CHOICES = STATE_CHOICES
-    RESOLUTION_CHOICES = RESOLUTION_CHOICES
-    REVERSE_STATE_CHOICES = REVERSE_STATE_CHOICES
+    STATE_CHOICES = workflow.STATE_CHOICES
+    RESOLUTION_CHOICES = workflow.RESOLUTION_CHOICES
+    REVERSE_STATE_CHOICES = workflow.REVERSE_STATE_CHOICES
     
     task = models.ForeignKey(Task, related_name="history_task", verbose_name=_('tasks'))
     
@@ -201,7 +191,7 @@ class TaskHistory(models.Model):
     summary = models.CharField(_('summary'), max_length=100)
     detail = models.TextField(_('detail'), blank=True)
     markup = models.CharField(_(u'Detail Markup'), max_length=3,
-        choices=MARKUP_CHOICES, blank=True)
+        choices=settings.MARKUP_CHOICES, blank=True)
     creator = models.ForeignKey(User, related_name="history_created_tasks", verbose_name=_('creator'))
     created = models.DateTimeField(_('created'), default=datetime.now)
     modified = models.DateTimeField(_('modified'), default=datetime.now) # task modified when commented on or when various fields changed
@@ -210,8 +200,8 @@ class TaskHistory(models.Model):
     tags = TagField()
     
     status = models.CharField(_('status'), max_length=100, blank=True)
-    state = models.CharField(_('state'), max_length=1, choices=STATE_CHOICES, default=1)
-    resolution = models.CharField(_('resolution'), max_length=2, choices=RESOLUTION_CHOICES, default=0, blank=True)
+    state = models.CharField(_('state'), max_length=1, choices=workflow.STATE_CHOICES, default=1)
+    resolution = models.CharField(_('resolution'), max_length=2, choices=workflow.RESOLUTION_CHOICES, default=0, blank=True)
     
     # this stores the comment
     comment = models.TextField(_('comment'), blank=True)

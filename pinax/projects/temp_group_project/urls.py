@@ -8,10 +8,18 @@ from account.openid_consumer import PinaxConsumer
 from django.contrib import admin
 admin.autodiscover()
 
-import os
+
+if settings.ACCOUNT_OPEN_SIGNUP:
+    signup_view = "account.views.signup"
+else:
+    signup_view = "signup_codes.views.signup"
+
 
 urlpatterns = patterns('',
     url(r'^$', direct_to_template, {"template": "homepage.html"}, name="home"),
+    
+    url(r'^admin/invite_user/$', 'signup_codes.views.admin_invite_user', name="admin_invite_user"),
+    url(r'^account/signup/$', signup_view, name="acct_signup"),
     
     (r'^about/', include('about.urls')),
     (r'^account/', include('account.urls')),
@@ -22,8 +30,8 @@ urlpatterns = patterns('',
     (r'^comments/', include('threadedcomments.urls')),
     
     (r'^groups/', include('basic_groups.urls')),
-    (r'^newtribes/', include('newtribes.urls')),
-    (r'^newprojects/', include('newprojects.urls')),
+    (r'^tribes/', include('tribes.urls')),
+    (r'^projects/', include('projects.urls')),
     #(r'^tribes/', include('tribes_ng.urls')),
     #(r'^projects/', include('temp_projects.urls')),
     

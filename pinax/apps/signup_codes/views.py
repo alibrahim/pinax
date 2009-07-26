@@ -60,10 +60,13 @@ def admin_invite_user(request, form_class=InviteUserForm,
     if request.method == "POST":
         form = form_class(request.POST)
         if form.is_valid():
+            email = form.cleaned_data["email"]
             form.send_signup_code()
+            request.user.message_set.create(message=ugettext("An e-mail has been sent to %(email)s.") % {"email": email})
+            form = form_class() # reset
     else:
         form = form_class()
     return render_to_response(template_name, {
-        "title": "Invite user",
+        "title": ugettext("Invite user"),
         "form": form,
     }, context_instance=RequestContext(request))

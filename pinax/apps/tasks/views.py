@@ -5,9 +5,9 @@ from operator import attrgetter
 
 
 from django.shortcuts import render_to_response, get_object_or_404
+from django.core.exceptions import ObjectDoesNotExist
 from django.conf import settings
-from django.http import HttpResponse
-from django.http import HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, Http404
 from django.template import RequestContext
 from django.core.urlresolvers import reverse
 from django.core.exceptions import ImproperlyConfigured
@@ -19,6 +19,8 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
+
+from pinax.utils.importlib import import_module
 
 from tagging.models import Tag
 from django.utils.translation import ugettext
@@ -33,11 +35,7 @@ from tasks.models import (Task, TaskHistory, Nudge)
 
 from tasks.forms import TaskForm, EditTaskForm, SearchTaskForm
 
-from tasks.workflow import (REVERSE_STATE_CHOICES, STATE_ID_LIST, STATE_CHOICES,
-                            RESOLUTION_CHOICES, STATE_CHOICES_DICT,
-                            RESOLUTION_CHOICES_DICT)
-
-from tasks.workflow import export_state_transitions as ext
+workflow = import_module(getattr(settings, "TASKS_WORKFLOW_MODULE", "tasks.workflow"))
 
 try:
     notification = get_app('notification')
@@ -47,20 +45,26 @@ except ImproperlyConfigured:
 
 def tasks(request, group_slug=None, template_name="tasks/task_list.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if not request.user.is_authenticated():
         is_member = False
     else:
-        is_member = group.user_is_member(request.user)
+        if group:
+            is_member = group.user_is_member(request.user)
+        else:
+            is_member = True
 
     group_by = request.GET.get("group_by")
     
     if group:
-        tasks = group.get_related_objects(Task)
+        tasks = group.content_objects(Task)
     else:
         tasks = Task.objects.filter(object_id=None)
 
@@ -68,16 +72,16 @@ def tasks(request, group_slug=None, template_name="tasks/task_list.html", bridge
     hide_state  = request.GET.get("hide_state")
     if hide_state:
         for exclude in hide_state.split(','):
-            if exclude in STATE_ID_LIST:
+            if exclude in workflow.STATE_ID_LIST:
                 tasks = tasks.exclude(state__exact=exclude)
 
-            state = REVERSE_STATE_CHOICES.get(exclude, None)
+            state = workflow.REVERSE_STATE_CHOICES.get(exclude, None)
             if state:
                 tasks = tasks.exclude(state__exact=state)
 
 
     state_displays = []
-    for state in STATE_CHOICES:
+    for state in workflow.STATE_CHOICES:
         state_displays.append(dict(id=state[0], description=state[1]))
 
     return render_to_response(template_name, {
@@ -92,19 +96,21 @@ def tasks(request, group_slug=None, template_name="tasks/task_list.html", bridge
 
 def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, template_name="tasks/add.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if not request.user.is_authenticated():
         is_member = False
     else:
-        is_member = group.user_is_member(request.user)
-    
-    include_kwargs = {}
-    if group:
-        include_kwargs.update(group.get_url_kwargs())
+        if group:
+            is_member = group.user_is_member(request.user)
+        else:
+            is_member = True
 
     # If we got an ID for a snippet in url, collect some initial values
     # But only if we could import the Snippet Model so
@@ -157,8 +163,16 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
                     notify_list = notify_list.exclude(id__exact=request.user.id)
                     notification.send(notify_list, "tasks_new", {"creator": request.user, "task": task, "group": group})
                 if request.POST.has_key('add-another-task'):
-                    return HttpResponseRedirect(reverse("task_add", kwargs=include_kwargs))
-                return HttpResponseRedirect(reverse("task_list", kwargs=include_kwargs))
+                    if group:
+                        redirect_to = bridge.reverse("task_add", group)
+                    else:
+                        redirect_to = reverse("task_add")
+                    return HttpResponseRedirect(redirect_to)
+                if group:
+                    redirect_to = bridge.reverse("task_list", group)
+                else:
+                    redirect_to = reverse("task_list")
+                return HttpResponseRedirect(redirect_to)
     else:
         task_form = form_class(group=group, initial=initial)
 
@@ -174,13 +188,16 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
 def nudge(request, id, group_slug=None, bridge=None):
     """ Called when a user nudges a ticket """
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if group:
-        tasks = group.get_related_objects(Task)
+        tasks = group.content_objects(Task)
     else:
         tasks = Task.objects.filter(object_id=None)
     
@@ -215,13 +232,16 @@ def nudge(request, id, group_slug=None, bridge=None):
 
 def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if group:
-        tasks = group.get_related_objects(Task)
+        tasks = group.content_objects(Task)
     else:
         tasks = Task.objects.filter(object_id=None)
     
@@ -236,7 +256,10 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
     if not request.user.is_authenticated():
         is_member = False
     else:
-        is_member = group.user_is_member(request.user)
+        if group:
+            is_member = group.user_is_member(request.user)
+        else:
+            is_member = True
 
     if is_member and request.method == "POST":
         form = EditTaskForm(request.user, request.POST, instance=task)
@@ -295,19 +318,18 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
 @login_required
 def user_tasks(request, username, group_slug=None, template_name="tasks/user_tasks.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if group:
         other_user = get_object_or_404(group.member_users.all(), username=username)
     else:
         other_user = get_object_or_404(User, username=username)
-    
-    include_kwargs = {}
-    if group:
-        include_kwargs.update(group.get_url_kwargs())
         
     assigned_tasks = other_user.assigned_tasks.all().order_by("state", "-modified") # @@@ filter(project__deleted=False)
     created_tasks = other_user.created_tasks.all().order_by("state", "-modified") # @@@ filter(project__deleted=False)
@@ -315,7 +337,10 @@ def user_tasks(request, username, group_slug=None, template_name="tasks/user_tas
     # get the list of your tasks that have been nudged
     nudged_tasks = [x for x in other_user.assigned_tasks.all().order_by('-modified') if x.task_nudge.all()]
 
-    url = reverse("tasks_mini_list", kwargs=include_kwargs)
+    if group:
+        url = bridge.reverse("tasks_mini_list", group)
+    else:
+        url = reverse("tasks_mini_list")
     
     bookmarklet = """javascript:(
             function() {
@@ -344,20 +369,26 @@ def mini_list(request, group_slug=None, template_name="tasks/mini_list.html", br
 
 def focus(request, field, value, group_slug=None, template_name="tasks/focus.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if not request.user.is_authenticated():
         is_member = False
     else:
-        is_member = group.user_is_member(request.user)
+        if group:
+            is_member = group.user_is_member(request.user)
+        else:
+            is_member = True
 
     group_by = request.GET.get("group_by")
 
     if group:
-        tasks = group.get_related_objects(Task)
+        tasks = group.content_objects(Task)
     else:
         tasks = Task.objects.filter(object_id=None)
 
@@ -370,7 +401,7 @@ def focus(request, field, value, group_slug=None, template_name="tasks/focus.htm
         except:
             tasks = Task.objects.none() # @@@ or throw 404?
     elif field == "state":
-        tasks = qs.filter(state=Task.REVERSE_STATE_CHOICES[value])
+        tasks = qs.filter(state=workflow.REVERSE_STATE_CHOICES[value])
     elif field == "assignee":
         if value == "unassigned": # @@@ this means can't have a username 'unassigned':
             tasks = qs.filter(assignee__isnull=True)
@@ -403,18 +434,24 @@ def focus(request, field, value, group_slug=None, template_name="tasks/focus.htm
 
 def tasks_history_list(request, group_slug=None, template_name="tasks/tasks_history_list.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if not request.user.is_authenticated():
         is_member = False
     else:
-        is_member = group.user_is_member(request.user)
+        if group:
+            is_member = group.user_is_member(request.user)
+        else:
+            is_member = True
 
     if group:
-        tasks = group.get_related_objects(TaskHistory)
+        tasks = group.content_objects(TaskHistory)
     else:
         tasks = TaskHistory.objects.filter(object_id=None)
     tasks = tasks.order_by("-modified")
@@ -427,13 +464,16 @@ def tasks_history_list(request, group_slug=None, template_name="tasks/tasks_hist
 
 def tasks_history(request, id, group_slug=None, template_name="tasks/task_history.html", bridge=None):
     
-    try:
-        group = bridge.get_group(group_slug)
-    except ObjectDoesNotExist:
-        raise Http404
+    if bridge:
+        try:
+            group = bridge.get_group(group_slug)
+        except ObjectDoesNotExist:
+            raise Http404
+    else:
+        group = None
     
     if group:
-        tasks = group.get_related_objects(Task)
+        tasks = group.content_objects(Task)
     else:
         tasks = Task.objects.filter(object_id=None)
     
@@ -449,8 +489,8 @@ def tasks_history(request, id, group_slug=None, template_name="tasks/task_histor
 
 
     for change in task_history:
-        change.humanized_state = STATE_CHOICES_DICT.get(change.state, None)
-        change.humanized_resolution = RESOLUTION_CHOICES_DICT.get(change.resolution, None)
+        change.humanized_state = workflow.STATE_CHOICES_DICT.get(change.state, None)
+        change.humanized_resolution = workflow.RESOLUTION_CHOICES_DICT.get(change.resolution, None)
 
 
     return render_to_response(template_name, {
@@ -461,5 +501,5 @@ def tasks_history(request, id, group_slug=None, template_name="tasks/task_histor
     }, context_instance=RequestContext(request))
 
 def export_state_transitions(request):
-    export = ext()
+    export = workflow.export_state_transitions()
     return HttpResponse(export,mimetype='text/csv')

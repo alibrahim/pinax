@@ -1,40 +1,41 @@
 from django import template
 from django.utils.encoding import smart_str
 from django.core.urlresolvers import reverse, NoReverseMatch
+from django.db.models import get_model
 
 
 register = template.Library()
 
 
 class GroupURLNode(template.Node):
-    def __init__(self, view_name, group, args, kwargs, asvar):
+    def __init__(self, view_name, group, kwargs, asvar):
         self.view_name = view_name
         self.group = group
-        self.args = args
         self.kwargs = kwargs
         self.asvar = asvar
     
     def render(self, context):
+        url = ""
         group = self.group.resolve(context)
-        
-        args = []
-        for arg in self.args:
-            args.append(arg.resolve(context))
         
         kwargs = {}
         for k, v in self.kwargs.items():
             kwargs[smart_str(k, "ascii")] = v.resolve(context)
         
-        if group is not None:
-            kwargs.update(group.get_url_kwargs())
-        
-        try:
-            url = reverse(self.view_name, args=args, kwargs=kwargs)
-        except NoReverseMatch:
-            # @@@ look at the other import Django does
-            if self.asvar is None:
-                raise
-        
+        if group:
+            bridge = group.content_bridge
+            try:
+                url = bridge.reverse(self.view_name, group, kwargs=kwargs)
+            except NoReverseMatch:
+                if self.asvar is None:
+                    raise
+        else:
+            try:
+                url = reverse(self.view_name, kwargs=kwargs)
+            except NoReverseMatch:
+                if self.asvar is None:
+                    raise
+                
         if self.asvar:
             context[self.asvar] = url
             return ""
@@ -42,12 +43,27 @@ class GroupURLNode(template.Node):
             return url
 
 
+class ContentObjectsNode(template.Node):
+    def __init__(self, group_var, model_name_var, context_var):
+        self.group_var = template.Variable(group_var)
+        self.model_name_var = template.Variable(model_name_var)
+        self.context_var = context_var
+    
+    def render(self, context):
+        group = self.group_var.resolve(context)
+        app_name, model_name = self.model_name_var.resolve(context).split(".")
+        model = get_model(app_name, model_name)
+        context[self.context_var] = group.content_objects(model)
+        return ""
+
+
 @register.tag
 def groupurl(parser, token):
     bits = token.contents.split()
+    tag_name = bits[0]
     if len(bits) < 3:
         raise template.TemplateSyntaxError("'%s' takes at least two arguments"
-            " (path to a view and a group)" % bits[0])
+            " (path to a view and a group)" % tag_name)
     
     view_name = bits[1]
     group = parser.compile_filter(bits[2])
@@ -68,6 +84,17 @@ def groupurl(parser, token):
                         k = k.strip()
                         kwargs[k] = parser.compile_filter(v)
                     elif arg:
-                        args.append(parser.compile_filter(arg))
+                        raise template.TemplateSyntaxError("'%s' does not support non-kwargs arguments." % tag_name)
     
-    return GroupURLNode(view_name, group, args, kwargs, asvar)
+    return GroupURLNode(view_name, group, kwargs, asvar)
+
+
+@register.tag
+def content_objects(parser, token):
+    """
+        {% content_objects group "tasks.Task" as tasks %}
+    """
+    bits = token.split_contents()
+    if len(bits) != 5:
+        raise template.TemplateSyntaxError("'%s' requires five arguments." % bits[0])
+    return ContentObjectsNode(bits[1], bits[2], bits[4])

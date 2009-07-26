@@ -3,14 +3,13 @@ from django.conf import settings
 
 from django.views.generic.simple import direct_to_template
 
+from wiki import models as wiki_models
+
 from account.openid_consumer import PinaxConsumer
 
 from django.contrib import admin
 admin.autodiscover()
 
-import os
-
-from wiki import models as wiki_models
 
 urlpatterns = patterns('',
     url(r'^$', direct_to_template, {"template": "homepage.html"}, name="home"),
@@ -23,6 +22,8 @@ urlpatterns = patterns('',
     (r'^profiles/', include('basic_profiles.urls')),
     (r'^notices/', include('notification.urls')),
     (r'^announcements/', include('announcements.urls')),
+    (r'^tagging_utils/', include('tagging_utils.urls')),
+    (r'^attachments/', include('attachments.urls')),
     #(r'^pastebin/', include('pastebin.urls')),
     #(r'^quickbar/', include('quickbar.urls')),
     #(r'^documents/', include('documents.urls')),
