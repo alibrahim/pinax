@@ -25,8 +25,6 @@ if sys.platform == 'win32':
     PIP_CMD = 'pip.exe'
     EASY_INSTALL_CMD = 'easy_install.exe'
     extra = {'shell': True}
-    if not expected_exe.endswith('.exe'):
-        expected_exe = '%s.exe' % expected_exe
 else:
     GIT_CMD = 'git'
     PIP_CMD = 'pip'
@@ -50,24 +48,41 @@ def winpath(path):
         return win32api.GetShortPathName(path)
     return path
 
-def resolve_command(cmd, default_paths=[]):
-    # searches the current $PATH for the given executable and returns the
-    # full path, borrowed from virtualenv.
-    if sys.platform == 'win32' and cmd == 'python':
-        # path lookups on Windows need .exe
-        cmd = 'python.exe'
-    if os.path.realpath(cmd) != cmd:
-        paths = os.environ.get('PATH', '').split(os.pathsep)
-        if default_paths:
-            paths.insert(0, default_paths)
-        for path in paths:
-            if os.path.exists(os.path.join(path, cmd)):
-                path = winpath(path)
-                cmd = os.path.join(path, cmd)
-                break
+def resolve_command(cmd, path=None, pathext=None):
+    """
+    Searches the PATH for the given executable and returns the normalized path
+    """
+    # save the path searched for for later fallback
+    searched_for_path = path
+    if path is None:
+        path = os.environ.get('PATH', []).split(os.pathsep)
+    if isinstance(path, basestring):
+        path = [path]
+    # check if there are funny path extensions for executables, e.g. Windows
+    if pathext is None:
+        pathext = os.environ.get('PATHEXT', '.COM;.EXE;.BAT;.CMD').split(os.pathsep)
+    # don't use extensions if the command ends with one of them
+    for ext in pathext:
+        if cmd.endswith(ext):
+            pathext = ['']
+            break
+    # check if we find the command on PATH
+    for _dir in path:
+        f = os.path.join(_dir, cmd)
+        for ext in pathext:
+            # try without extension first
+            if os.path.isfile(f):
+                return os.path.realpath(f)
+            # then including the extension
+            fext = f + ext
+            if os.path.isfile(fext):
+                return os.path.realpath(fext)
+    # last resort: just try the searched for path
+    if searched_for_path:
+        cmd = os.path.join(os.path.realpath(searched_for_path), cmd)
     if not os.path.exists(cmd):
         print "ERROR: this script requires %s." % cmd
-        print "Please install it to create a Pinax virtualenv."
+        print "Please verify it exists because it couldn't be found."
         sys.exit(3)
     return os.path.realpath(cmd)
 
@@ -146,7 +161,7 @@ def release_files_exist(release_dir, requirements_file):
         line = line.strip()
         if not line or line.startswith('#'):
             continue
-        requirement = join(release_dir, line)
+        requirement = os.path.normpath(join(release_dir, line))
         if not os.path.exists(requirement):
             result = False
             missing_requirements.append(requirement)
@@ -248,7 +263,7 @@ def after_install(options, home_dir):
             if not line or line.startswith('#'):
                 continue
             logger.notify('Installing %s' % line)
-            call_subprocess([easy_install, '--quiet', '--always-copy',
+            call_subprocess([easy_install, '--quiet',
                             '--always-unzip', '--find-links', PINAX_PYPI, line],
                             filter_stdout=filter_lines, show_stdout=False)
 

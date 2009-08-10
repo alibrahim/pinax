@@ -60,30 +60,32 @@ def tasks(request, group_slug=None, template_name="tasks/task_list.html", bridge
             is_member = group.user_is_member(request.user)
         else:
             is_member = True
-
+    
     group_by = request.GET.get("group_by")
     
     if group:
         tasks = group.content_objects(Task)
+        group_base = bridge.group_base_template()
     else:
         tasks = Task.objects.filter(object_id=None)
-
+        group_base = None
+    
     # exclude states
     hide_state  = request.GET.get("hide_state")
     if hide_state:
         for exclude in hide_state.split(','):
             if exclude in workflow.STATE_ID_LIST:
                 tasks = tasks.exclude(state__exact=exclude)
-
+                
             state = workflow.REVERSE_STATE_CHOICES.get(exclude, None)
             if state:
                 tasks = tasks.exclude(state__exact=state)
-
-
+    
+    
     state_displays = []
     for state in workflow.STATE_CHOICES:
         state_displays.append(dict(id=state[0], description=state[1]))
-
+    
     return render_to_response(template_name, {
         "group": group,
         "tasks": tasks,
@@ -91,6 +93,7 @@ def tasks(request, group_slug=None, template_name="tasks/task_list.html", bridge
         "is_member": is_member,
         "hide_state": hide_state,
         "state_displays": state_displays,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
 
 
@@ -104,6 +107,11 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
     else:
         group = None
     
+    if group:
+        group_base = bridge.group_base_template()
+    else:
+        group_base = None
+    
     if not request.user.is_authenticated():
         is_member = False
     else:
@@ -111,7 +119,7 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
             is_member = group.user_is_member(request.user)
         else:
             is_member = True
-
+    
     # If we got an ID for a snippet in url, collect some initial values
     # But only if we could import the Snippet Model so
     if secret_id and Snippet:
@@ -128,7 +136,7 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
         }
     else:
         initial = {}
-
+    
     search_form = SearchTaskForm()
     search_results = []
     if request.method == "POST":
@@ -143,8 +151,8 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
                     Q(detail__contains=search)
                     )
                 search_results = Task.objects.filter(qset).distinct()
-
-
+        
+        
         if request.user.is_authenticated() and not action:
             task_form = form_class(group, request.POST)
             if task_form.is_valid():
@@ -175,13 +183,14 @@ def add_task(request, group_slug=None, secret_id=None, form_class=TaskForm, temp
                 return HttpResponseRedirect(redirect_to)
     else:
         task_form = form_class(group=group, initial=initial)
-
+    
     return render_to_response(template_name, {
         "group": group,
         "is_member": is_member,
         "task_form": task_form,
         "search_form": search_form,
-        "search_results":search_results
+        "search_results":search_results,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
 
 @login_required
@@ -203,7 +212,7 @@ def nudge(request, id, group_slug=None, bridge=None):
     
     task = get_object_or_404(tasks, id=id)
     task_url = task.get_absolute_url(group)
-
+    
     nudged = Nudge.objects.filter(task__exact=task, nudger__exact=request.user)
     if nudged:
         # you've already nudged this task.
@@ -212,22 +221,22 @@ def nudge(request, id, group_slug=None, bridge=None):
         message = "You've removed your nudge from this task"
         request.user.message_set.create(message=message)
         return HttpResponseRedirect(task_url)
-
-
+    
+    
     nudge = Nudge(nudger=request.user, task=task)
     nudge.save()
-
+    
     count = Nudge.objects.filter(task__exact=task).count()
-
+    
     # send the message to the user
     message = "%s has been nudged about this task" % task.assignee
     request.user.message_set.create(message=message)
-
+    
     # send out the nudge notification
     if notification:
         notify_list = [task.assignee]
         notification.send(notify_list, "tasks_nudge", {"nudger": request.user, "task": task, "count": count})
-
+    
     return HttpResponseRedirect(task_url)
 
 def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=None):
@@ -242,11 +251,13 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
     
     if group:
         tasks = group.content_objects(Task)
+        group_base = bridge.group_base_template()
     else:
         tasks = Task.objects.filter(object_id=None)
+        group_base = None
     
     task = get_object_or_404(tasks, id=id)
-
+    
     if group:
         notify_list = group.member_users.all()
     else:
@@ -260,7 +271,7 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
             is_member = group.user_is_member(request.user)
         else:
             is_member = True
-
+    
     if is_member and request.method == "POST":
         form = EditTaskForm(request.user, request.POST, instance=task)
         if form.is_valid():
@@ -287,14 +298,14 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
             form = EditTaskForm(request.user, instance=task)
     else:
         form = EditTaskForm(request.user, instance=task)
-
+    
     # The NUDGE dictionary
     nudge = {}
     nudge['nudgeable'] = False
-
+    
     # get the count of nudges so assignee can see general level of interest.
     nudge['count'] = Nudge.objects.filter(task__exact=task).count()
-
+    
     # get the nudge if you are not the assignee otherwise just a None
     if is_member and request.user != task.assignee and task.assignee:
         nudge['nudgeable'] = True
@@ -302,16 +313,17 @@ def task(request, id, group_slug=None, template_name="tasks/task.html", bridge=N
             nudge['nudge'] = Nudge.objects.filter(nudger__exact=request.user, task__exact=task)[0]
         except IndexError:
             nudge['nudge'] = None
-
+    
     # get the nudge history
     nudge['history'] = Nudge.objects.filter(task__exact=task)
-
+    
     return render_to_response(template_name, {
         "group": group,
         "nudge": nudge,
         "task": task,
         "is_member": is_member,
         "form": form,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
 
 
@@ -328,15 +340,26 @@ def user_tasks(request, username, group_slug=None, template_name="tasks/user_tas
     
     if group:
         other_user = get_object_or_404(group.member_users.all(), username=username)
+        group_base = bridge.group_base_template()
     else:
         other_user = get_object_or_404(User, username=username)
-        
-    assigned_tasks = other_user.assigned_tasks.all().order_by("state", "-modified") # @@@ filter(project__deleted=False)
-    created_tasks = other_user.created_tasks.all().order_by("state", "-modified") # @@@ filter(project__deleted=False)
-
-    # get the list of your tasks that have been nudged
-    nudged_tasks = [x for x in other_user.assigned_tasks.all().order_by('-modified') if x.task_nudge.all()]
-
+        group_base = None
+    
+    assigned_tasks = other_user.assigned_tasks.all()
+    created_tasks = other_user.created_tasks.all()
+    
+    if group:
+        assigned_tasks = group.content_objects(assigned_tasks)        
+        created_tasks = group.content_objects(created_tasks)
+    
+    assigned_tasks = assigned_tasks.order_by("state", "-modified") # @@@ filter(project__deleted=False)
+    created_tasks = created_tasks.order_by("state", "-modified") # @@@ filter(project__deleted=False)
+    
+    nudged_tasks = assigned_tasks.extra(
+        tables = ["tasks_nudge"],
+        where = ["tasks_nudge.id = tasks_task.id"],
+    )
+    
     if group:
         url = bridge.reverse("tasks_mini_list", group)
     else:
@@ -356,6 +379,7 @@ def user_tasks(request, username, group_slug=None, template_name="tasks/user_tas
         "nudged_tasks": nudged_tasks,
         "other_user": other_user,
         "bookmarklet": bookmarklet,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
 
 
@@ -384,31 +408,33 @@ def focus(request, field, value, group_slug=None, template_name="tasks/focus.htm
             is_member = group.user_is_member(request.user)
         else:
             is_member = True
-
+    
     group_by = request.GET.get("group_by")
-
+    
     if group:
         tasks = group.content_objects(Task)
+        group_base = bridge.group_base_template()
     else:
         tasks = Task.objects.filter(object_id=None)
-
+        group_base = None
+    
     if field == "modified":
         try:
             # @@@ this seems hackish and brittle but I couldn't work out another way
             year, month, day = value.split("-")
             # have to int month and day in case zero-padded
-            tasks = qs.filter(modified__year=int(year), modified__month=int(month), modified__day=int(day))
+            tasks = tasks.filter(modified__year=int(year), modified__month=int(month), modified__day=int(day))
         except:
             tasks = Task.objects.none() # @@@ or throw 404?
     elif field == "state":
-        tasks = qs.filter(state=workflow.REVERSE_STATE_CHOICES[value])
+        tasks = tasks.filter(state=workflow.REVERSE_STATE_CHOICES[value])
     elif field == "assignee":
         if value == "unassigned": # @@@ this means can't have a username 'unassigned':
-            tasks = qs.filter(assignee__isnull=True)
+            tasks = tasks.filter(assignee__isnull=True)
         else:
             try:
                 assignee = User.objects.get(username=value)
-                tasks = qs.filter(assignee=assignee)
+                tasks = tasks.filter(assignee=assignee)
             except User.DoesNotExist:
                 tasks = Task.objects.none() # @@@ or throw 404?
     elif field == "tag":
@@ -419,9 +445,7 @@ def focus(request, field, value, group_slug=None, template_name="tasks/focus.htm
             # @@@ still need to filter on group if group not None
         except Tag.DoesNotExist:
             tasks = Task.objects.none() # @@@ or throw 404?
-    else:
-        tasks = qs
-
+    
     return render_to_response(template_name, {
         "group": group,
         "tasks": tasks,
@@ -429,6 +453,7 @@ def focus(request, field, value, group_slug=None, template_name="tasks/focus.htm
         "value": value,
         "group_by": group_by,
         "is_member": is_member,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
 
 
@@ -449,18 +474,22 @@ def tasks_history_list(request, group_slug=None, template_name="tasks/tasks_hist
             is_member = group.user_is_member(request.user)
         else:
             is_member = True
-
+    
     if group:
         tasks = group.content_objects(TaskHistory)
+        group_base = bridge.group_base_template()
     else:
         tasks = TaskHistory.objects.filter(object_id=None)
+        group_base = None
     tasks = tasks.order_by("-modified")
     
     return render_to_response(template_name, {
         "group": group,
         "task_history": tasks,
         "is_member": is_member,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
+
 
 def tasks_history(request, id, group_slug=None, template_name="tasks/task_history.html", bridge=None):
     
@@ -474,31 +503,33 @@ def tasks_history(request, id, group_slug=None, template_name="tasks/task_histor
     
     if group:
         tasks = group.content_objects(Task)
+        group_base = bridge.group_base_template()
     else:
         tasks = Task.objects.filter(object_id=None)
+        group_base = None
     
     task = get_object_or_404(tasks, id=id)
     task_history = task.history_task.all().order_by('-modified')
     nudge_history = task.task_nudge.all().order_by('-modified')
-
+    
     result_list = sorted(
         chain(task_history, nudge_history),
         key=attrgetter('modified')
         )
     result_list.reverse()
-
-
+    
     for change in task_history:
         change.humanized_state = workflow.STATE_CHOICES_DICT.get(change.state, None)
         change.humanized_resolution = workflow.RESOLUTION_CHOICES_DICT.get(change.resolution, None)
-
-
+    
     return render_to_response(template_name, {
         "group": group,
         "task": task,
         "task_history": result_list,
         "nudge_history": nudge_history,
+        "group_base": group_base,
     }, context_instance=RequestContext(request))
+
 
 def export_state_transitions(request):
     export = workflow.export_state_transitions()

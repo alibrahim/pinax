@@ -5,6 +5,7 @@ from datetime import datetime
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.core.urlresolvers import reverse
 from django.utils.html import escape
 from django.utils.translation import ugettext_lazy as _
 
@@ -144,12 +145,11 @@ class Task(models.Model):
         
         return choices
     
-    @models.permalink
     def get_absolute_url(self, group=None):
-        include_kwargs = {"id": self.pk}
+        kwargs = {"id": self.pk}
         if group:
-            include_kwargs.update(group.get_url_kwargs())
-        return ("task_detail", [], include_kwargs)
+            return group.content_bridge.reverse("task_detail", group, kwargs)
+        return reverse("task_detail", kwargs=kwargs)
 
 
 from threadedcomments.models import ThreadedComment
@@ -190,7 +190,7 @@ class TaskHistory(models.Model):
     group = generic.GenericForeignKey("content_type", "object_id")
     summary = models.CharField(_('summary'), max_length=100)
     detail = models.TextField(_('detail'), blank=True)
-    markup = models.CharField(_(u'Detail Markup'), max_length=3,
+    markup = models.CharField(_(u'Detail Markup'), max_length=20,
         choices=settings.MARKUP_CHOICES, blank=True)
     creator = models.ForeignKey(User, related_name="history_created_tasks", verbose_name=_('creator'))
     created = models.DateTimeField(_('created'), default=datetime.now)
