@@ -132,12 +132,14 @@ INSTALLED_APPS = (
     'uni_form',
     'django_markup',
     'attachments',
+    'filter',
     
     # internal (for now)
     'basic_profiles',
     'account',
     'signup_codes',
     'groups',
+    'topics',
     'tagging_utils',
     'threadedcomments_extras',
     #'pastebin',
@@ -180,6 +182,8 @@ ACCOUNT_EMAIL_VERIFICATION = False
 
 AUTHENTICATED_EXEMPT_URLS = [
     r"^/account/signup/$",
+    r"^/account/password_reset",
+    r"^/account/confirm_email",
 ]
 
 # local_settings.py can be used to override environment-specific settings

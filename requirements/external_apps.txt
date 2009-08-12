@@ -1,6 +1,7 @@
 # Get all requirements formerly known as "external_libs" explicitly
 --requirement=libs.txt
 --find-links=http://pypi.pinaxproject.com
+--find-links=http://pypi2.pinaxproject.com
 
 # Already released apps
 django-ajax-validation==0.1.3
@@ -14,7 +15,7 @@ django-messages==0.4.2
 django-threadedcomments==0.5.1
 django-extensions==0.4.1
 django-uni-form==0.5.1
-django-timezones==0.1.2
+django-timezones==0.1.3
 django-page-cms==1.0.5
 django-bookmarks==0.1.0
 django-email-confirmation==0.1.3
@@ -34,6 +35,7 @@ django-wikiapp==0.2.0dev
 sorl==3.1
 django-generic-flatblocks==0.3.0
 django-frontendadmin==0.4
+django-filter==0.2.0
 
 # packages we create ourselves for release:
 django-tagging==0.3_pre

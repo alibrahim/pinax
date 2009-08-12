@@ -1,4 +1,4 @@
-{% extends "tribes/base.html" %}
+{% extends "topics/base.html" %}
 
 {% load i18n %}
 {% load uni_form %}
@@ -11,7 +11,7 @@
 {% block head_title %}{% trans "Topic" %} : {{ topic.title }}{% endblock %}
 
 {% block body %}
-    <p><a href="{% groupurl topic_list group %}">&larr; {% trans "Back to Topic List for Tribe " %} {{ group.title }}</a></p>
+    <p><a href="{% groupurl topic_list group %}">&larr; {% trans "Back to Topic List" %}</a></p>
     
     <ul class="responses">
         <li class="odd thread-0 clearfix">
@@ -39,7 +39,7 @@
         </li>
     </ul>
     {% if edit %}
-        <h2>Edit {{ group.title }}</h2>
+        <h2>Edit</h2>
         <form class="uniForm" method="post" action="{{ request.path }}">
             <fieldset class="inlineLabels">
                 <div class="form_block">
@@ -49,6 +49,6 @@
             </fieldset>
         </form>
     {% else %}
-        {% comments group %}
+        {% comments topic %}
     {% endif %}
 {% endblock %}
